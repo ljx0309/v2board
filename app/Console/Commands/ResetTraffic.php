@@ -46,13 +46,15 @@ class ResetTraffic extends Command
         ini_set('memory_limit', -1);
         $resetMethods = Plan::select(
             DB::raw("GROUP_CONCAT(`id`) as plan_ids"),
-            DB::raw("reset_traffic_method as method")
+            DB::raw("reset_traffic_method as method"),
+            DB::raw("transfer_enable as plan_transfer_enable")
         )
             ->groupBy('reset_traffic_method')
             ->get()
             ->toArray();
         foreach ($resetMethods as $resetMethod) {
             $planIds = explode(',', $resetMethod['plan_ids']);
+            $planTransferEnable = $resetMethod['plan_transfer_enable'];
             switch (true) {
                 case ($resetMethod['method'] === NULL): {
                     $resetTrafficMethod = config('v2board.reset_traffic_method', 0);
@@ -60,32 +62,34 @@ class ResetTraffic extends Command
                     switch ((int)$resetTrafficMethod) {
                         // month first day
                         case 0:
-                            $this->resetByMonthFirstDay($builder);
+                            $this->resetByMonthFirstDay($builder, $planTransferEnable);
                             break;
                         // expire day
                         case 1:
-                            $this->resetByExpireDay($builder);
+                            $this->resetByExpireDay($builder, $planTransferEnable);
                             break;
                         // no action
                         case 2:
                             break;
                         // year first day
                         case 3:
-                            $this->resetByYearFirstDay($builder);
+                            $this->resetByYearFirstDay($builder, $planTransferEnable);
+                            break;
                         // year expire day
                         case 4:
-                            $this->resetByExpireYear($builder);
+                            $this->resetByExpireYear($builder, $planTransferEnable);
+                            break;
                     }
                     break;
                 }
                 case ($resetMethod['method'] === 0): {
                     $builder = with(clone($this->builder))->whereIn('plan_id', $planIds);
-                    $this->resetByMonthFirstDay($builder);
+                    $this->resetByMonthFirstDay($builder, $planTransferEnable);
                     break;
                 }
                 case ($resetMethod['method'] === 1): {
                     $builder = with(clone($this->builder))->whereIn('plan_id', $planIds);
-                    $this->resetByExpireDay($builder);
+                    $this->resetByExpireDay($builder, $planTransferEnable);
                     break;
                 }
                 case ($resetMethod['method'] === 2): {
@@ -93,19 +97,19 @@ class ResetTraffic extends Command
                 }
                 case ($resetMethod['method'] === 3): {
                     $builder = with(clone($this->builder))->whereIn('plan_id', $planIds);
-                    $this->resetByYearFirstDay($builder);
+                    $this->resetByYearFirstDay($builder, $planTransferEnable);
                     break;
                 }
                 case ($resetMethod['method'] === 4): {
                     $builder = with(clone($this->builder))->whereIn('plan_id', $planIds);
-                    $this->resetByExpireYear($builder);
+                    $this->resetByExpireYear($builder, $planTransferEnable);
                     break;
                 }
             }
         }
     }
 
-    private function resetByExpireYear($builder):void
+    private function resetByExpireYear($builder, $planTransferEnable):void
     {
         $users = [];
         foreach ($builder->get() as $item) {
@@ -117,31 +121,34 @@ class ResetTraffic extends Command
         }
         User::whereIn('id', $users)->update([
             'u' => 0,
-            'd' => 0
+            'd' => 0,
+            'transfer_enable' => $planTransferEnable
         ]);
     }
 
-    private function resetByYearFirstDay($builder):void
+    private function resetByYearFirstDay($builder, $planTransferEnable):void
     {
         if ((string)date('md') === '0101') {
             $builder->update([
                 'u' => 0,
-                'd' => 0
+                'd' => 0,
+                'transfer_enable' => $planTransferEnable
             ]);
         }
     }
 
-    private function resetByMonthFirstDay($builder):void
+    private function resetByMonthFirstDay($builder, $planTransferEnable):void
     {
         if ((string)date('d') === '01') {
             $builder->update([
                 'u' => 0,
-                'd' => 0
+                'd' => 0,
+                'transfer_enable' => $planTransferEnable
             ]);
         }
     }
 
-    private function resetByExpireDay($builder):void
+    private function resetByExpireDay($builder, $planTransferEnable):void
     {
         $lastDay = date('d', strtotime('last day of +0 months'));
         $users = [];
@@ -158,7 +165,8 @@ class ResetTraffic extends Command
         }
         User::whereIn('id', $users)->update([
             'u' => 0,
-            'd' => 0
+            'd' => 0,
+            'transfer_enable' => $planTransferEnable
         ]);
     }
 }
